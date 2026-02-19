@@ -1,0 +1,20 @@
+To reimplement Git on this repository and start with a clean history, follow these steps in the command prompt from the project root directory (e:/MCP/scraper-mcp/scraper-mcp). This will remove the existing Git history and initialize a new repository.
+
+1. Remove the existing .git directory (this deletes all Git history):
+   rmdir /s /q .git
+
+2. Initialize a new Git repository:
+   git init
+
+3. Add all files to the staging area:
+   git add .
+
+4. Create the initial commit:
+   git commit -m "Initial commit with clean history"
+
+5. (Optional) If you had a remote repository (e.g., on GitHub), add it back and push:
+   git remote add origin https://github.com/yourusername/your-repo.git
+   git branch -M main
+   git push -u origin main
+
+Note: Replace the remote URL in step 5 with your actual repository URL. If the remote already exists or you don't need it, skip step 5. Ensure Git is installed on your system.

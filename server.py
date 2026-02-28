@@ -18,6 +18,21 @@ from contextlib import asynccontextmanager
 import base64
 import uuid
 import os
+from urllib.parse import urlparse
+
+
+def is_valid_url(url: str) -> bool:
+    """
+    Validate that URL is HTTP/HTTPS and has a netloc.
+    Prevents access to local file:// or other schemes.
+    """
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+        return parsed.scheme in ('http', 'https') and parsed.netloc
+    except Exception:
+        return False
 
 # Import modules
 from search import SearchManager, search_with_concurrency
@@ -68,6 +83,9 @@ async def scrape_url(
     """
     Scrape a single URL with progressive fallback chain
     """
+    if not is_valid_url(url):
+        raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are allowed. Local file access (file:///) and other schemes are prohibited for security.")
+    
     scraper = FallbackScraper(max_retries=max_retries)
     result = await scraper.scrape_with_fallback(url)
     await scraper.close_session()
@@ -82,6 +100,10 @@ async def scrape_multiple(
     """
     Concurrent scraping of multiple URLs
     """
+    invalid_urls = [u for u in urls if not is_valid_url(u)]
+    if invalid_urls:
+        raise HTTPException(status_code=400, detail=f"Only HTTP/HTTPS URLs are allowed. Invalid URLs: {invalid_urls[:3]}... Local file access (file:///) and other schemes are prohibited for security.")
+    
     results = await scrape_multiple(urls, max_concurrent)
     return json.dumps(results)
 
@@ -93,6 +115,13 @@ async def extract_content(
     """
     Extract clean content from HTML using Trafilatura
     """
+    # Guardrail: limit input size to prevent abuse
+    if len(html) > 5000000:  # 5MB
+        raise HTTPException(status_code=400, detail="HTML input too large. Maximum 5MB allowed.")
+    
+    if url and not is_valid_url(url):
+        raise HTTPException(status_code=400, detail="If provided, URL must be HTTP/HTTPS.")
+    
     try:
         from trafilatura import extract
         content = extract(html, url=url, favor_precision=True, include_formatting=False)
@@ -110,6 +139,9 @@ async def browser_navigate(
     """
     Navigate to URL in browser session (creates if none)
     """
+    if not is_valid_url(url):
+        raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are allowed. Local file access (file:///) and other schemes are prohibited for security.")
+    
     global _sessions, _playwright_instance
     if not _playwright_instance:
         _playwright_instance = await async_playwright().start()
@@ -150,6 +182,15 @@ async def browser_evaluate(
     """
     Evaluate JS in browser
     """
+    # Guardrail against prompt injection and overly complex scripts
+    if len(script) > 10000:
+        raise HTTPException(status_code=400, detail="Script too long. Maximum 10k characters allowed to prevent abuse.")
+    
+    # Basic sanitization: remove potential injection attempts (simplistic)
+    script = script.strip()
+    if script.startswith('//') or 'prompt(' in script.lower() or 'alert(' in script.lower():
+        raise HTTPException(status_code=400, detail="Script contains potentially malicious patterns. Use safe JS only.")
+    
     global _sessions
     if not _sessions:
         return "No browser session."
